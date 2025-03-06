@@ -11,6 +11,9 @@ This repository contains modified prefab & script for the [VR-Stage-Lighting](ht
 > [!WARNING]
 > This modification mostly uses TextMeshPro for fancy Text instead of simple Unity Text component. While it's not required to have all text fields referenced in VRSL_LocalUIControlPanel component, it is required to have TextMeshPro installed in your project.
 
+> [!CAUTION]
+> BACKUP YOUR PROJECT BEFORE USING THIS MODIFICATION! I have no idea how it will complain in your environment or if it's backwards compatible.
+
 1. VRChat Creator Companion
  - You can just copy `Packages` folder from this repository into `YourProject/Packages`.
 2. Default Unity (?)

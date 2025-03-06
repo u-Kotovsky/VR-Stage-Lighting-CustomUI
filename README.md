@@ -2,7 +2,7 @@
 
 This repository contains modified prefab & script for the [VR-Stage-Lighting](https://github.com/AcChosen/VR-Stage-Lighting) package made by myself.
 
-[Modified VR-Stage-Lighting preview](/assets/images/Screenshot 2025-03-04 175821.png)
+[Modified VR-Stage-Lighting preview](/assets/images/Screenshot_2025-03-04_175821.png)
 
 # Installation
 > [!WARNING]

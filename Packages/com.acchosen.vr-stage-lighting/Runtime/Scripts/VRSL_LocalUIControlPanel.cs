@@ -1,27 +1,30 @@
-﻿#define TEXTMESHPRO
-#if TEXTMESHPRO
-using TMPro;
-#endif
-using UdonSharp;
+﻿
 using UnityEngine;
+#if UDONSHARP
+using UdonSharp;
 using VRC.SDKBase;
 using VRC.Udon;
+using static VRC.SDKBase.VRCShader;
+#else
+using static UnityEngine.Shader;
+using UnityEngine.Rendering;
+#endif
 
-#if !COMPILER_UDONSHARP && UNITY_EDITOR
+#if UNITY_EDITOR && !COMPILER_UDONSHARP
 using UnityEditor;
-using UdonSharpEditor;
-using System.Collections.Immutable;
 using System.Collections.Generic;
 using System;
 using System.IO;
-#endif
 
 #if UDONSHARP
-using static VRC.SDKBase.VRCShader;
-#else
-    using static UnityEngine.Shader;
-    using UnityEngine.Rendering;
+using UdonSharpEditor;
 #endif
+#endif
+
+#if TEXTMESHPRO
+using TMPro;
+#endif
+
 namespace VRSL
 {    
     public enum VolumetricQualityModes
@@ -36,8 +39,12 @@ namespace VRSL
         Low
     }
 
+#if UDONSHARP
     [UdonBehaviourSyncMode(BehaviourSyncMode.None)]
     public class VRSL_LocalUIControlPanel : UdonSharpBehaviour
+#else
+    public class VRSL_LocalUIControlPanel : MonoBehaviour
+#endif
     {
         [SerializeField, HideInInspector]
         private VRStageLighting_AudioLink_Laser[] audioLinkLasers;
@@ -64,11 +71,11 @@ namespace VRSL
         [Space(5.0f)]
         public DefaultQualityModes lensFlareQuality;
         public bool lockLensFlareQualityMode;
-        
+
         [Space(5.0f)]
         public DefaultQualityModes strobeQuality;
         public bool strobeQualityMode;
-       // [Space(20.0f)]
+        // [Space(20.0f)]
         [Header("Video Sampling")]
         public Texture videoSampleTargetTexture;
 
@@ -113,9 +120,9 @@ namespace VRSL
         public UnityEngine.UI.Text  discoballHighText,  discoballLowText;
         public UnityEngine.UI.Button lensFlareHighButton,  lensFlareLowButton;
         public UnityEngine.UI.Text lensFlareHighText, lensFlareLowText;
-        
-        public UnityEngine.UI.Button strobeHighButton,  strobeLowButton;
-        public UnityEngine.UI.Text  strobeHighText,  strobeLowText;
+
+        public UnityEngine.UI.Button strobeHighButton, strobeLowButton;
+        public UnityEngine.UI.Text strobeHighText, strobeLowText;
 
         public UnityEngine.UI.Button globalStrobeToggleButton;
         public UnityEngine.UI.Text globalStrobeLabel;
@@ -151,8 +158,8 @@ namespace VRSL
         [HideInInspector]
         public bool useLegacyStaticLights = false;
         public bool useExtendedUniverses = false;
-       // public bool adjustInGameInterpolation;
-       public bool sperateInGameInterpolationSpeed = true;
+        //public bool adjustInGameInterpolation;
+        public bool sperateInGameInterpolationSpeed = true;
         public float inGameInterpolationModifier = 1.55f;
         public bool outputDebugLogs;
 
@@ -165,29 +172,44 @@ namespace VRSL
         [HideInInspector]
         public string fixtureSaveFile = "NONE";
 
-
         [HideInInspector]
         public bool useDMXGI = false;
 
-        [FieldChangeCallback(nameof(VolumetricNoise)), SerializeField]
+        [SerializeField, FieldChangeCallback(nameof(VolumetricNoise))]
         private bool _volumetricNoise = true;
         int _Udon_DMXGridRenderTexture, _Udon_DMXGridRenderTextureMovement, _Udon_DMXGridSpinTimer, _Udon_DMXGridStrobeTimer, _Udon_DMXGridStrobeOutput;
 
         public bool VolumetricNoise
         {
+#if UNITY_ANDROID
+            set {
+                _volumetricNoise = false;
+                _CheckDepthLightStatus();
+            }
+            get => false;
+#else
             set
             {
                 _volumetricNoise = value;
                 _CheckDepthLightStatus();
             }
             get => _volumetricNoise;
+#endif
         }
 
-        [FieldChangeCallback(nameof(RequireDepthLight)), SerializeField]
+        [SerializeField, FieldChangeCallback(nameof(RequireDepthLight))]
         private bool _requireDepthLight = true;
 
         public bool RequireDepthLight
         {
+#if UNITY_ANDROID
+            set {
+                _requireDepthLight = false;
+                _CheckDepthLightStatus();
+                _DepthLightStatusReport();
+            }
+            get => false;
+#else
             set
             {
                 _requireDepthLight = value;
@@ -195,9 +217,10 @@ namespace VRSL
                 _DepthLightStatusReport();
             }
             get => _requireDepthLight;
+#endif
         }
 
-        [FieldChangeCallback(nameof(GlobalDisableStrobe)), SerializeField]
+        [SerializeField, FieldChangeCallback(nameof(GlobalDisableStrobe))]
         private bool _globalDisableStrobe = false;
 
         public bool GlobalDisableStrobe
@@ -216,8 +239,7 @@ namespace VRSL
         {
             GlobalDisableStrobe = !GlobalDisableStrobe;
         }
-        
-        
+
         private void SafeApplyText(UnityEngine.UI.Text text, string value)
         {
             if (text == null) return;
@@ -234,7 +256,8 @@ namespace VRSL
 
         private void SetGlobalStrobeUI()
         {
-            //if (globalStrobeToggleButton) globalStrobeToggleButton.colors = GlobalDisableStrobe ? cbOn : defaultColorBlock;
+            
+            if (globalStrobeToggleButton){globalStrobeToggleButton.colors = GlobalDisableStrobe ? cbOn : defaultColorBlock;}
             globalStrobeToggleButton.gameObject.SetActive(isUsingDMX);
         }
 
@@ -244,19 +267,25 @@ namespace VRSL
             {
                 if (rt == null) continue;
                 if (rt.name.Contains("Strobe") && rt.material.HasProperty("_DisableStrobe"))
-                    rt.material.SetFloat("_DisableStrobe", GlobalDisableStrobe ? 1f : 0f);
+                {
+                    rt.material.SetFloat("_DisableStrobe",GlobalDisableStrobe ? 1f : 0f);
+                }
             }       
             foreach (CustomRenderTexture rt in DMX_CRTS_Horizontal)
             {
                 if (rt == null) continue;
                 if (rt.name.Contains("Strobe") && rt.material.HasProperty("_DisableStrobe"))
-                    rt.material.SetFloat("_DisableStrobe", GlobalDisableStrobe ? 1f : 0f);
+                {
+                    rt.material.SetFloat("_DisableStrobe",GlobalDisableStrobe ? 1f : 0f);
+                }
             }        
             foreach (CustomRenderTexture rt in DMX_CRTS_Vertical)
             {
                 if (rt == null) continue;
                 if (rt.name.Contains("Strobe") && rt.material.HasProperty("_DisableStrobe"))
-                    rt.material.SetFloat("_DisableStrobe", GlobalDisableStrobe ? 1f : 0f);
+                {
+                    rt.material.SetFloat("_DisableStrobe",GlobalDisableStrobe ? 1f : 0f);
+                }
             }
             SetGlobalStrobeUI();     
         }
@@ -273,40 +302,47 @@ namespace VRSL
 
         private void ReduceInGameInterpolation()
         {
-            if (!sperateInGameInterpolationSpeed) return;
-            foreach (CustomRenderTexture rend in DMX_CRTS_Horizontal)
+            if (sperateInGameInterpolationSpeed)
             {
-                if (rend.material == null || !rend.material.name.Contains("Interpolated")) continue;
-                float max = Mathf.Clamp01(rend.material.GetFloat("_MaximumSmoothnessDMX"));
-                float min = Mathf.Clamp01(rend.material.GetFloat("_MinimumSmoothnessDMX"));
-                rend.material.SetFloat("_MaximumSmoothnessDMX", Mathf.Clamp01(max/inGameInterpolationModifier));
-                rend.material.SetFloat("_MinimumSmoothnessDMX", Mathf.Clamp01(min/inGameInterpolationModifier));
-            }
-            
-            foreach (CustomRenderTexture rend in DMX_CRTS_Vertical)
-            {
-                if (rend.material == null || !rend.material.name.Contains("Interpolated")) continue;
-                float max = Mathf.Clamp01(rend.material.GetFloat("_MaximumSmoothnessDMX"));
-                float min = Mathf.Clamp01(rend.material.GetFloat("_MinimumSmoothnessDMX"));
-                rend.material.SetFloat("_MaximumSmoothnessDMX", Mathf.Clamp01(max/inGameInterpolationModifier));
-                rend.material.SetFloat("_MinimumSmoothnessDMX", Mathf.Clamp01(min/inGameInterpolationModifier));
-            }
-            
-            foreach(CustomRenderTexture rend in DMX_CRTS_Legacy)
-            {
-                if (rend.material == null || !rend.material.name.Contains("Interpolated")) continue;
-                float max = Mathf.Clamp01(rend.material.GetFloat("_MaximumSmoothnessDMX"));
-                float min = Mathf.Clamp01(rend.material.GetFloat("_MinimumSmoothnessDMX"));
-                rend.material.SetFloat("_MaximumSmoothnessDMX", Mathf.Clamp01(max/inGameInterpolationModifier));
-                rend.material.SetFloat("_MinimumSmoothnessDMX", Mathf.Clamp01(min/inGameInterpolationModifier));
+                foreach (CustomRenderTexture rend in DMX_CRTS_Horizontal)
+                {
+                    
+                    if (rend.material != null && rend.material.name.Contains("Interpolated"))
+                    {
+                        float max = Mathf.Clamp01(rend.material.GetFloat("_MaximumSmoothnessDMX"));
+                        float min = Mathf.Clamp01(rend.material.GetFloat("_MinimumSmoothnessDMX"));
+                        rend.material.SetFloat("_MaximumSmoothnessDMX", Mathf.Clamp01(max/inGameInterpolationModifier));
+                        rend.material.SetFloat("_MinimumSmoothnessDMX", Mathf.Clamp01(min/inGameInterpolationModifier));
+                    }
+                }
+                foreach (CustomRenderTexture rend in DMX_CRTS_Vertical)
+                {
+                    if (rend.material != null && rend.material.name.Contains("Interpolated"))
+                    {
+                        float max = Mathf.Clamp01(rend.material.GetFloat("_MaximumSmoothnessDMX"));
+                        float min = Mathf.Clamp01(rend.material.GetFloat("_MinimumSmoothnessDMX"));
+                        rend.material.SetFloat("_MaximumSmoothnessDMX", Mathf.Clamp01(max/inGameInterpolationModifier));
+                        rend.material.SetFloat("_MinimumSmoothnessDMX", Mathf.Clamp01(min/inGameInterpolationModifier));
+                    }
+                }
+                foreach (CustomRenderTexture rend in DMX_CRTS_Legacy)
+                {
+                    if (rend.material != null && rend.material.name.Contains("Interpolated"))
+                    {
+                        float max = Mathf.Clamp01(rend.material.GetFloat("_MaximumSmoothnessDMX"));
+                        float min = Mathf.Clamp01(rend.material.GetFloat("_MinimumSmoothnessDMX"));
+                        rend.material.SetFloat("_MaximumSmoothnessDMX", Mathf.Clamp01(max/inGameInterpolationModifier));
+                        rend.material.SetFloat("_MinimumSmoothnessDMX", Mathf.Clamp01(min/inGameInterpolationModifier));
+                    }
+                }
             }
         }
-        
+
         public void OnEnable() 
         {
             _CheckDepthLightStatus();
         }
-        
+
         private void Start()
         {
             if (volumetricHighButton)
@@ -314,14 +350,13 @@ namespace VRSL
                 defaultColorBlock = volumetricHighButton.colors;
                 cbOn = defaultColorBlock;
                 //cbOn.normalColor = new Color(cbOn.normalColor.r + 0.35f, cbOn.normalColor.r + 0.35f, cbOn.normalColor.g + 0.35f, 1.0f);
-                // do not touch my color scheme >:c
+                // dont touch my color scheme >:c
             }
             if (bloomAnimator == null)
             {
                 GameObject anim = GameObject.Find("PostProcessingExample-Bloom");
                 if (anim != null) bloomAnimator = anim.GetComponent<Animator>();
             }
-            
             _SetTextureIDS();
             _CheckDepthLightStatus();
             _SetFinalIntensity();
@@ -346,6 +381,9 @@ namespace VRSL
             ReduceInGameInterpolation();
 #endif
             SetStrobeTextureStatus();
+
+            SetStrobeQuality();
+            UpdateStrobeButtons();
         }
 
         private void _CheckButtonLockStatus()
@@ -353,32 +391,29 @@ namespace VRSL
             //Color disableColor = new Color(0.25f, 0.25f, 0.25f, 1.0f);
             //Color disableButEnabledColor = new Color(0.4f, 0.4f, 0.4f, 1.0f);
             //Color disabledTextColor = new Color(1.0f, 1.0f, 1.0f, 0.045f);
-            if(lockVolumetricQualityMode)
+            if (lockVolumetricQualityMode)
             {
                 if (volumetricHighButton)
                 {
-                    //volumetricHighButton.image.color = volumetricQuality == VolumetricQualityModes.High
-                    //    ? disableButEnabledColor
+                    //volumetricHighButton.image.color = volumetricQuality == VolumetricQualityModes.High 
+                    //    ? disableButEnabledColor 
                     //    : disableColor;
                     volumetricHighButton.interactable = false;
                 }
-
                 if (volumetricMedButton)
                 {
-                    //volumetricMedButton.image.color = volumetricQuality == VolumetricQualityModes.Medium
-                    //    ? disableButEnabledColor
+                    //volumetricMedButton.image.color = volumetricQuality == VolumetricQualityModes.Medium 
+                    //    ? disableButEnabledColor 
                     //    : disableColor;
                     volumetricMedButton.interactable = false;
                 }
-
                 if (volumetricLowButton)
                 {
-                    //volumetricLowButton.image.color = volumetricQuality == VolumetricQualityModes.Low
-                    //    ? disableButEnabledColor
+                    //volumetricLowButton.image.color = volumetricQuality == VolumetricQualityModes.Low 
+                    //    ? disableButEnabledColor 
                     //    : disableColor;
                     volumetricLowButton.interactable = false;
                 }
-
                 //if (volumetricHighText) volumetricHighText.color = disabledTextColor;
                 //if (volumetricMedText) volumetricMedText.color = disabledTextColor;
                 //if (volumetricLowText) volumetricLowText.color = disabledTextColor;
@@ -387,107 +422,95 @@ namespace VRSL
             {
                 if (blinderProjectionHighButton)
                 {
-                    //blinderProjectionHighButton.image.color = blinderProjectionQuality == DefaultQualityModes.High
-                    //    ? disableButEnabledColor
+                    //blinderProjectionHighButton.image.color = blinderProjectionQuality == DefaultQualityModes.High 
+                    //    ? disableButEnabledColor 
                     //    : disableColor;
                     blinderProjectionHighButton.interactable = false;
                 }
-
                 if (blinderProjectionLowButton)
                 {
-                    //blinderProjectionLowButton.image.color = blinderProjectionQuality == DefaultQualityModes.Low
-                    //    ? disableButEnabledColor
+                    //blinderProjectionLowButton.image.color = blinderProjectionQuality == DefaultQualityModes.Low 
+                    //    ? disableButEnabledColor 
                     //    : disableColor;
                     blinderProjectionLowButton.interactable = false;
                 }
-
                 //if (blinderProjectionHighText) blinderProjectionHighText.color = disabledTextColor;
                 //if (blinderProjectionLowText) blinderProjectionLowText.color = disabledTextColor;
             }
-            if(lockLensFlareQualityMode)
+            if (lockLensFlareQualityMode)
             {
                 if (lensFlareHighButton)
                 {
-                    //lensFlareHighButton.image.color = lensFlareQuality == DefaultQualityModes.High
-                    //    ? disableButEnabledColor
+                    //lensFlareHighButton.image.color = lensFlareQuality == DefaultQualityModes.High 
+                    //    ? disableButEnabledColor 
                     //    : disableColor;
                     lensFlareHighButton.interactable = false;
                 }
-
                 if (lensFlareLowButton)
                 {
-                    //lensFlareLowButton.image.color = lensFlareQuality == DefaultQualityModes.Low
-                    //    ? disableButEnabledColor
+                    //lensFlareLowButton.image.color = lensFlareQuality == DefaultQualityModes.Low 
+                    //    ? disableButEnabledColor 
                     //    : disableColor;
                     lensFlareLowButton.interactable = false;
                 }
-
                 //if (lensFlareHighText) lensFlareHighText.color = disabledTextColor;
                 //if (lensFlareLowText) lensFlareLowText.color = disabledTextColor;
             }
-            
-            
 
-            if(lockParProjectionQualityMode)
+            if (lockParProjectionQualityMode)
             {
                 if (parProjectionHighButton)
                 {
-                    //parProjectionHighButton.image.color = parProjectionQuality == DefaultQualityModes.High
-                    //    ? disableButEnabledColor
+                    //parProjectionHighButton.image.color = parProjectionQuality == DefaultQualityModes.High 
+                    //    ? disableButEnabledColor 
                     //    : disableColor;
                     parProjectionHighButton.interactable = false;
                 }
-
                 if (parProjectionLowButton)
                 {
-                    //parProjectionLowButton.image.color = parProjectionQuality == DefaultQualityModes.Low
-                    //    ? disableButEnabledColor
+                    //parProjectionLowButton.image.color = parProjectionQuality == DefaultQualityModes.Low 
+                    //    ? disableButEnabledColor 
                     //    : disableColor;
                     parProjectionLowButton.interactable = false;
                 }
-
                 //if (parProjectionHighText) parProjectionHighText.color = disabledTextColor;
                 //if (parProjectionLowText) parProjectionLowText.color = disabledTextColor;
             }
-            if(lockOtherProjectionQualityMode)
+            if (lockOtherProjectionQualityMode)
             {
                 if (otherProjectionHighButton)
                 {
-                    //otherProjectionHighButton.image.color = otherProjectionQuality == DefaultQualityModes.High
-                    //    ? disableButEnabledColor
+                    //otherProjectionHighButton.image.color = otherProjectionQuality == DefaultQualityModes.High 
+                    //    ? disableButEnabledColor 
                     //    : disableColor;
                     otherProjectionHighButton.interactable = false;
                 }
-
                 if (otherProjectionLowButton)
                 {
-                    //otherProjectionLowButton.image.color = otherProjectionQuality == DefaultQualityModes.Low
-                    //    ? disableButEnabledColor
+                    //otherProjectionLowButton.image.color = otherProjectionQuality == DefaultQualityModes.Low 
+                    //    ? disableButEnabledColor 
                     //    : disableColor;
                     otherProjectionLowButton.interactable = false;
                 }
-
                 //if (otherProjectionHighText) otherProjectionHighText.color = disabledTextColor;
                 //if (otherProjectionLowText) otherProjectionLowText.color = disabledTextColor;
             }
-            if(lockDiscoballQualityMode)
+            if (lockDiscoballQualityMode)
             {
                 if (discoballHighButton)
                 {
-                    //discoballHighButton.image.color = discoballQuality == DefaultQualityModes.High
-                    //    ? disableButEnabledColor
+                    //discoballHighButton.image.color = discoballQuality == DefaultQualityModes.High 
+                    //    ? disableButEnabledColor 
                     //    : disableColor;
                     discoballHighButton.interactable = false;
                 }
-
                 if (discoballLowButton)
                 {
-                    //discoballLowButton.image.color = discoballQuality == DefaultQualityModes.Low
-                    //    ? disableButEnabledColor
+                    //discoballLowButton.image.color = discoballQuality == DefaultQualityModes.Low 
+                    //    ? disableButEnabledColor 
                     //    : disableColor;
                     discoballLowButton.interactable = false;
                 }
-
                 //if (discoballHighText) discoballHighText.color = disabledTextColor;
                 //if (discoballLowText) discoballLowText.color = disabledTextColor;
             }
@@ -505,7 +528,10 @@ namespace VRSL
         }
 
         public void SafeSetButtonInteractable(
-            UnityEngine.UI.Button buttonHigh, UnityEngine.UI.Button buttonMedium, UnityEngine.UI.Button buttonLow, VolumetricQualityModes quality)
+            UnityEngine.UI.Button buttonHigh, 
+            UnityEngine.UI.Button buttonMedium, 
+            UnityEngine.UI.Button buttonLow, 
+            VolumetricQualityModes quality)
         {
             // Safe update UI buttons
             SafeSetButtonInteractable(buttonHigh, quality != VolumetricQualityModes.High);
@@ -514,21 +540,23 @@ namespace VRSL
         }
 
         public void SafeSetButtonInteractable(
-            UnityEngine.UI.Button buttonHigh, /*UnityEngine.UI.Button buttonMedium,*/ UnityEngine.UI.Button buttonLow, DefaultQualityModes quality)
-        {
-            // Safe update UI buttons
+            UnityEngine.UI.Button buttonHigh, 
+            /*UnityEngine.UI.Button buttonMedium,*/ 
+            UnityEngine.UI.Button buttonLow, 
+            DefaultQualityModes quality)
+        {   // Safe update UI buttons
+            
             SafeSetButtonInteractable(buttonHigh, quality != DefaultQualityModes.High);
             //SafeSetButtonInteractable(buttonMedium, quality == DefaultQualityModes.Medium);
             SafeSetButtonInteractable(buttonLow, quality != DefaultQualityModes.Low);
         }
 
+        #region Udon Methods
         #region Volumetric Quality Buttons
-        public void UpdateVolumetricButtons()
-        {
-            // Safe update UI buttons
+        public void UpdateVolumetricButtons() 
+        {   // Safe update UI buttons
             SafeSetButtonInteractable(volumetricHighButton, volumetricMedButton, volumetricLowButton, volumetricQuality);
         }
-
         public void _SetVolumetricHigh()
         {
             if (lockVolumetricQualityMode) return;
@@ -554,11 +582,9 @@ namespace VRSL
 
         #region Projection Blinders Quality Buttons
         public void UpdateBlindersButtons()
-        {
-            // Safe update UI buttons
+        {   // Safe update UI buttons
             SafeSetButtonInteractable(blinderProjectionHighButton, blinderProjectionLowButton, blinderProjectionQuality);
         }
-        
         public void _SetProjectionBlindersHigh()
         {
             if (lockBlinderProjectionQualityMode) return;
@@ -577,11 +603,9 @@ namespace VRSL
 
         #region Projection Pars Quality Buttons
         public void UpdateParsButtons()
-        {
-            // Safe update UI buttons
+        {   // Safe update UI buttons
             SafeSetButtonInteractable(parProjectionHighButton, parProjectionLowButton, parProjectionQuality);
         }
-        
         public void _SetProjectionParsHigh()
         {
             if (lockParProjectionQualityMode) return;
@@ -600,11 +624,9 @@ namespace VRSL
 
         #region Projection Other Quality Buttons
         public void UpdateOtherButtons()
-        {
-            // Safe update UI buttons
+        {   // Safe update UI buttons
             SafeSetButtonInteractable(otherProjectionHighButton, otherProjectionLowButton, otherProjectionQuality);
         }
-        
         public void _SetProjectionOtherHigh()
         {
             if (lockOtherProjectionQualityMode) return;
@@ -623,11 +645,9 @@ namespace VRSL
 
         #region Discoball Quality Buttons
         public void UpdateDiscoButtons()
-        {
-            // Safe update UI buttons
+        {   // Safe update UI buttons
             SafeSetButtonInteractable(discoballHighButton, discoballLowButton, discoballQuality);
         }
-        
         public void _SetDiscoballHigh()
         {
             if (lockDiscoballQualityMode) return;
@@ -646,8 +666,7 @@ namespace VRSL
 
         #region Lens Flare Quality Buttons
         public void UpdateLensFlareButtons()
-        {
-            // Safe update UI buttons
+        {   // Safe update UI buttons
             SafeSetButtonInteractable(lensFlareHighButton, lensFlareLowButton, lensFlareQuality);
         }
 
@@ -658,6 +677,7 @@ namespace VRSL
             _SetLensFlareQualtiyMode();
             UpdateLensFlareButtons();
         }
+
         public void _SetLensFlareLow()
         {
             if (lockLensFlareQualityMode) return;
@@ -666,7 +686,7 @@ namespace VRSL
             UpdateLensFlareButtons();
         }
         #endregion
-        
+
         #region Strobe Quality Buttons
         public void UpdateStrobeButtons()
         {
@@ -681,6 +701,7 @@ namespace VRSL
             _SetStrobeQualtiyMode();
             UpdateStrobeButtons();
         }
+
         public void _SetStrobeLow()
         {
             //if (lockLensFlareQualityMode) return;
@@ -689,7 +710,7 @@ namespace VRSL
             UpdateStrobeButtons();
         }
         #endregion
-        
+
         public void _UpdateAllQualityModes()
         {
             _SetDiscoBallQualityMode();
@@ -701,8 +722,8 @@ namespace VRSL
         }
         public void _SetVolumetricQualityMode()
         {
-            // Don't fucking touch my beatiful colors!
-            /*switch(volumetricQuality)
+            /* Don't touch my colors!
+            switch (volumetricQuality)
             {
                 case VolumetricQualityModes.High:
                     if (volumetricHighButton) volumetricHighButton.colors = cbOn;
@@ -722,9 +743,10 @@ namespace VRSL
             }*/
             SetVolumetricQuality();
         }
+
         public void _SetBlinderProjectionQualityMode()
         {
-            /*switch(blinderProjectionQuality)
+            /*switch (blinderProjectionQuality)
             {
                 case DefaultQualityModes.High:
                     if (blinderProjectionHighButton) blinderProjectionHighButton.colors = cbOn;
@@ -740,7 +762,7 @@ namespace VRSL
 
         public void _SetParProjectionQualityMode()
         {
-            /*switch(parProjectionQuality)
+            /*switch (parProjectionQuality)
             {
                 case DefaultQualityModes.High:
                     if (parProjectionHighButton) parProjectionHighButton.colors = cbOn;
@@ -753,9 +775,10 @@ namespace VRSL
             }*/
             SetParProjectionQuality();
         }
+
         public void _SetOtherProjectionQualityMode()
         {
-            /*switch(otherProjectionQuality)
+            /*switch (otherProjectionQuality)
             {
                 case DefaultQualityModes.High:
                     if (otherProjectionHighButton) otherProjectionHighButton.colors = cbOn;
@@ -770,7 +793,7 @@ namespace VRSL
         }
         public void _SetDiscoBallQualityMode()
         {
-            /*switch(discoballQuality)
+            /*switch (discoballQuality)
             {
                 case DefaultQualityModes.High:
                     if (discoballHighButton) discoballHighButton.colors = cbOn;
@@ -783,9 +806,10 @@ namespace VRSL
             }*/
             SetDiscoballQuality();
         }
+
         public void _SetLensFlareQualtiyMode()
         {
-            /*switch(lensFlareQuality)
+            /*switch (lensFlareQuality)
             {
                 case DefaultQualityModes.High:
                     if (lensFlareHighButton) lensFlareHighButton.colors = cbOn;
@@ -813,56 +837,40 @@ namespace VRSL
             }*/
             SetStrobeQuality();
         }
+
         public void _CheckDepthLightStatus()
         {
-            foreach(Material mat in volumetricMaterials)
+            foreach (Material mat in volumetricMaterials)
             {
-                mat.SetInt("_PotatoMode", _volumetricNoise ? 0 : 1);
-                mat.SetInt("_UseDepthLight", _requireDepthLight ? 1 : 0);
+                mat.SetInt("_PotatoMode", VolumetricNoise ? 0 : 1);
+                mat.SetInt("_UseDepthLight", RequireDepthLight ? 1 : 0);
                 if (mat.HasProperty("_UseDepthLight"))
-                {
-                    SetKeyword(mat, "_USE_DEPTH_LIGHT",
-                        (Mathf.FloorToInt(mat.GetInt("_UseDepthLight"))) == 1);
-                }
-
+                    SetKeyword(mat, "_USE_DEPTH_LIGHT", Mathf.FloorToInt(mat.GetInt("_UseDepthLight")) == 1 ? true : false);
                 if (mat.HasProperty("_MAGIC_NOISE_ON_MED"))
-                {
-                    SetKeyword(mat, "_MAGIC_NOISE_ON_MED",
-                        (Mathf.FloorToInt(mat.GetInt("_MAGIC_NOISE_ON_MED"))) == 1);
-                }
-
+                    SetKeyword(mat, "_MAGIC_NOISE_ON_MED", Mathf.FloorToInt(mat.GetInt("_MAGIC_NOISE_ON_MED")) == 1 ? true : false);
                 if (mat.HasProperty("_MAGIC_NOISE_ON_HIGH"))
-                {
-                    SetKeyword(mat, "_MAGIC_NOISE_ON_HIGH",
-                        (Mathf.FloorToInt(mat.GetInt("_MAGIC_NOISE_ON_HIGH"))) == 1);
-                }
-
+                    SetKeyword(mat, "_MAGIC_NOISE_ON_HIGH", Mathf.FloorToInt(mat.GetInt("_MAGIC_NOISE_ON_HIGH")) == 1 ? true : false);
                 if (mat.HasProperty("_PotatoMode"))
-                {
-                    SetKeyword(mat, "_POTATO_MODE_ON",
-                        (Mathf.FloorToInt(mat.GetInt("_PotatoMode"))) == 1);
-                }
+                    SetKeyword(mat, "_POTATO_MODE_ON", Mathf.FloorToInt(mat.GetInt("_PotatoMode")) == 1 ? true : false);
             }
-            foreach(Material mat in projectionMaterials)
+            foreach (Material mat in projectionMaterials)
             {
-                mat.SetInt("_UseDepthLight", _requireDepthLight ? 1 : 0);
+                mat.SetInt("_UseDepthLight", RequireDepthLight ? 1 : 0);
             }
-            if (fixtureMaterials != null)
-            {
-                foreach(Material mat in fixtureMaterials)
-                {
-                    if (mat == null) continue;
-                    mat.SetInt("_UseDepthLight", _requireDepthLight ? 1 : 0);
-                    if (!mat.HasProperty("_UseDepthLight")) continue;
-                    SetKeyword(mat, "_USE_DEPTH_LIGHT",
-                        (Mathf.FloorToInt(mat.GetInt("_UseDepthLight"))) == 1);
-                }
-            }
+            if (fixtureMaterials == null) return;
             
+            foreach (Material mat in fixtureMaterials)
+            {
+                if (mat == null) continue;
+                mat.SetInt("_UseDepthLight", RequireDepthLight ? 1 : 0);
+                if (mat.HasProperty("_UseDepthLight"))
+                    SetKeyword(mat, "_USE_DEPTH_LIGHT", Mathf.FloorToInt(mat.GetInt("_UseDepthLight")) == 1 ? true : false);
+            }
         }
+
         private void _DepthLightStatusReport()
         {
-            // if(_requireDepthLight)
+            // if (_requireDepthLight)
             // {
             //     Debug.Log("VRSL Control Panel: Enabling Depth Light Requirement");
             // }
@@ -871,19 +879,21 @@ namespace VRSL
             //     Debug.Log("VRSL Control Panel: Disabling Depth Light Requirement");
             // }
         }
-        
+
+        #endregion
+
         private void EnableCRTS(CustomRenderTexture[] rtArray)
         {
             foreach (CustomRenderTexture rt in rtArray)
             {
                 rt.updateMode = CustomRenderTextureUpdateMode.Realtime;
 #if UNITY_2022
-                rt.updatePeriod = _targetCRTUpdateRate;
+                    rt.updatePeriod = _targetCRTUpdateRate;
 #endif
                 if (rt.name.Contains("Color"))
                 {
-                    if(outputDebugLogs){
-                        Debug.Log("DMX Color: " + rt.name);}
+                    if (outputDebugLogs)
+                        Debug.Log("DMX Color: " + rt.name);
 #if UDONSHARP
                     VRCShader.SetGlobalTexture(_Udon_DMXGridRenderTexture, rt);
 #else
@@ -893,35 +903,29 @@ namespace VRSL
                 else if (rt.name.Contains("Movement"))
                 {
                     if (outputDebugLogs)
-                    {
                         Debug.Log("DMX Movement: " + rt.name);
-                    }
 #if UDONSHARP
                     VRCShader.SetGlobalTexture(_Udon_DMXGridRenderTextureMovement, rt);
 #else
                     Shader.SetGlobalTexture(_Udon_DMXGridRenderTextureMovement, rt, RenderTextureSubElement.Default);
 #endif
                 }
-                else if(rt.name.Contains("Spin"))
+                else if (rt.name.Contains("Spin"))
                 {
                     if (outputDebugLogs)
-                    {
                         Debug.Log("DMX Spin Timings: " + rt.name);
-                    }
 #if UDONSHARP
                     VRCShader.SetGlobalTexture(_Udon_DMXGridSpinTimer, rt);
 #else
                     Shader.SetGlobalTexture(_Udon_DMXGridSpinTimer, rt, RenderTextureSubElement.Default);
 #endif
                 }
-                else if(rt.name.Contains("Strobe"))
+                else if (rt.name.Contains("Strobe"))
                 {
-                    if(rt.name.Contains("Timings"))
+                    if (rt.name.Contains("Timings"))
                     {
                         if (outputDebugLogs)
-                        {
                             Debug.Log("DMX Strobe Timings: " + rt.name);
-                        }
 #if UDONSHARP
                         VRCShader.SetGlobalTexture(_Udon_DMXGridStrobeTimer, rt);
 #else
@@ -936,40 +940,28 @@ namespace VRSL
                             if (rt.name.Contains("Delay-Final") && DMXMode != LEGACY_MODE)
                             {
 #if UDONSHARP
-                                if (outputDebugLogs)
-                                {
-                                    Debug.Log("DMX Strobe Output: " + rt.name);
-                                }
-
+                                if (outputDebugLogs) Debug.Log("DMX Strobe Output: " + rt.name);
                                 VRCShader.SetGlobalTexture(_Udon_DMXGridStrobeOutput, rt);
 #else
                                 Shader.SetGlobalTexture(_Udon_DMXGridStrobeOutput, rt, RenderTextureSubElement.Default);
 #endif
                             }
-                            else if(DMXMode == LEGACY_MODE)
+                            else if (DMXMode == LEGACY_MODE)
                             {
 #if UDONSHARP
-                                if (outputDebugLogs)
-                                {
-                                    Debug.Log("DMX Strobe Output: " + rt.name);
-                                }
-
+                                if (outputDebugLogs) Debug.Log("DMX Strobe Output: " + rt.name);
                                 VRCShader.SetGlobalTexture(_Udon_DMXGridStrobeOutput, rt);
 #else
                                 Shader.SetGlobalTexture(_Udon_DMXGridStrobeOutput, rt, RenderTextureSubElement.Default);
-#endif  
+#endif
                             }
                         }
                         else
                         {
-                            if(rt.name.Contains("Delay") == false)
+                            if (rt.name.Contains("Delay") == false)
                             {           
 #if UDONSHARP
-                                if (outputDebugLogs)
-                                {
-                                    Debug.Log("Strobe Output: " + rt.name);
-                                }
-
+                                if (outputDebugLogs) Debug.Log("Strobe Output: " + rt.name);
                                 VRCShader.SetGlobalTexture(_Udon_DMXGridStrobeOutput, rt);
 #else
                                 Shader.SetGlobalTexture(_Udon_DMXGridStrobeOutput, rt, RenderTextureSubElement.Default);
@@ -980,47 +972,45 @@ namespace VRSL
                 }
             }
         }
+
         private void DisableCRTS(CustomRenderTexture[] rtArray)
         {
             foreach (CustomRenderTexture rt in rtArray)
-            {
                 rt.updateMode = CustomRenderTextureUpdateMode.OnDemand;
-            }
         }
-        
+
         public void _CheckDMX()
         {
-            if(isUsingDMX)
-            {
-                switch(DMXMode)
-                {
-                    case HORIZONTAL_MODE:
-                        EnableCRTS(DMX_CRTS_Horizontal);
-                        DisableCRTS(DMX_CRTS_Vertical);
-                        DisableCRTS(DMX_CRTS_Legacy);
-                        break;
-                    case VERTICAL_MODE:
-                        DisableCRTS(DMX_CRTS_Horizontal);
-                        EnableCRTS(DMX_CRTS_Vertical);
-                        DisableCRTS(DMX_CRTS_Legacy);
-                        break;
-                    case LEGACY_MODE:
-                        DisableCRTS(DMX_CRTS_Horizontal);
-                        DisableCRTS(DMX_CRTS_Vertical);
-                        EnableCRTS(DMX_CRTS_Legacy);
-                        break;
-                    default:
-                        DisableCRTS(DMX_CRTS_Horizontal);
-                        DisableCRTS(DMX_CRTS_Vertical);
-                        DisableCRTS(DMX_CRTS_Legacy);
-                        break;
-                }
-            }
-            else
+            if (!isUsingDMX)
             {
                 DisableCRTS(DMX_CRTS_Horizontal);
                 DisableCRTS(DMX_CRTS_Vertical);
                 DisableCRTS(DMX_CRTS_Legacy);
+                return;
+            }
+
+            switch (DMXMode)
+            {
+                case HORIZONTAL_MODE:
+                    EnableCRTS(DMX_CRTS_Horizontal);
+                    DisableCRTS(DMX_CRTS_Vertical);
+                    DisableCRTS(DMX_CRTS_Legacy);
+                    break;
+                case VERTICAL_MODE:
+                    DisableCRTS(DMX_CRTS_Horizontal);
+                    EnableCRTS(DMX_CRTS_Vertical);
+                    DisableCRTS(DMX_CRTS_Legacy);
+                    break;
+                case LEGACY_MODE:
+                    DisableCRTS(DMX_CRTS_Horizontal);
+                    DisableCRTS(DMX_CRTS_Vertical);
+                    EnableCRTS(DMX_CRTS_Legacy);
+                    break;
+                default:
+                    DisableCRTS(DMX_CRTS_Horizontal);
+                    DisableCRTS(DMX_CRTS_Vertical);
+                    DisableCRTS(DMX_CRTS_Legacy);
+                    break;
             }
         }
 
@@ -1034,38 +1024,32 @@ namespace VRSL
         {
             if (!isUsingDMX) return;
             DMXMode = VERTICAL_MODE;
-            _CheckDMX();
+                _CheckDMX();
         }
         public void _SetDMXLegacy()
         {
             if (!isUsingDMX) return;
             DMXMode = LEGACY_MODE;
-            _CheckDMX();
+                _CheckDMX();
         }
-
 
         public void _CheckAudioLink()
         {
             if (isUsingAudioLink)
             {
                 EnableCRTS(AudioLink_CRTs);
+                return;
             }
-            else
-            {
-                DisableCRTS(AudioLink_CRTs);
-            }
+
+            DisableCRTS(AudioLink_CRTs);
         }
 
         public void _CheckkExtendedUniverses()
         {
             foreach (CustomRenderTexture crt in DMX_CRTS_Horizontal)
-            {
                 crt.material.SetInt("_NineUniverseMode", useExtendedUniverses ? 1 : 0);
-            }
             foreach (CustomRenderTexture crt in DMX_CRTS_Vertical)
-            {
                 crt.material.SetInt("_NineUniverseMode", useExtendedUniverses ? 1 : 0);
-            }
         }
 
         public void _ForceUpdateVideoSampleTexture()
@@ -1073,30 +1057,20 @@ namespace VRSL
             if (videoSampleTargetTexture == null) return;
             
             foreach (Material m in laserMaterials)
-            {
-                if (!m.HasProperty("_SamplingTexture")) continue;
-                m.SetTexture("_SamplingTexture",videoSampleTargetTexture);
-            }
+                if (m.HasProperty("_SamplingTexture"))
+                    m.SetTexture("_SamplingTexture",videoSampleTargetTexture);
             foreach (Material m in fixtureMaterials)
-            {
-                if (!m.HasProperty("_SamplingTexture")) continue;
-                m.SetTexture("_SamplingTexture",videoSampleTargetTexture);
-            }
+                if (m.HasProperty("_SamplingTexture"))
+                    m.SetTexture("_SamplingTexture",videoSampleTargetTexture);
             foreach (Material m in discoBallMaterials)
-            {
-                if (!m.HasProperty("_SamplingTexture")) continue;
-                m.SetTexture("_SamplingTexture",videoSampleTargetTexture);
-            }
+                if (m.HasProperty("_SamplingTexture"))
+                    m.SetTexture("_SamplingTexture",videoSampleTargetTexture);
             foreach (Material m in projectionMaterials)
-            {
-                if (!m.HasProperty("_SamplingTexture")) continue;
-                m.SetTexture("_SamplingTexture",videoSampleTargetTexture);
-            }
+                if (m.HasProperty("_SamplingTexture"))
+                    m.SetTexture("_SamplingTexture",videoSampleTargetTexture);
             foreach (Material m in volumetricMaterials)
-            {
-                if (!m.HasProperty("_SamplingTexture")) continue;
-                m.SetTexture("_SamplingTexture",videoSampleTargetTexture);
-            }
+                if (m.HasProperty("_SamplingTexture"))
+                    m.SetTexture("_SamplingTexture",videoSampleTargetTexture);
         }
         
         public void _SetFinalIntensity()
@@ -1111,21 +1085,19 @@ namespace VRSL
             _SetProjectionIntensity();
             _SetDiscoBallIntensity();
             _SetLaserIntensity();
+            //masterSliderText.text = Mathf.Round(masterSlider.value * 100.0f).ToString();
             string text = Mathf.Round(masterSlider.value * 100.0f).ToString();
             SafeApplyText(masterSliderText, text);
 #if TEXTMESHPRO
             SafeApplyText(masterSliderTextPro, text);
 #endif
-            //masterSliderText.text = Mathf.Round(masterSlider.value * 100.0f).ToString();
         }
 
         public void _SetFixtureIntensity()
         {
             foreach (Material mat in fixtureMaterials)
-            {
-                if (mat == null) continue;
-                mat.SetFloat("_UniversalIntensity", Mathf.Lerp(0.0f, fixtureIntensityMax, fixtureSlider.value));
-            }
+                if (mat != null)
+                    mat.SetFloat("_UniversalIntensity", Mathf.Lerp(0.0f, fixtureIntensityMax, fixtureSlider.value));
             //fixtureSliderText.text = Mathf.Round(fixtureSlider.value * 100.0f).ToString();
             string text = Mathf.Round(fixtureSlider.value * 100.0f).ToString();
             SafeApplyText(fixtureSliderText, text);
@@ -1137,10 +1109,8 @@ namespace VRSL
         public void _SetVolumetricIntensity()
         {
             foreach (Material mat in volumetricMaterials)
-            {
-                if (mat == null) continue;
-                mat.SetFloat("_UniversalIntensity", Mathf.Lerp(0.0f, volumetricIntensityMax, volumetricSlider.value));
-            }
+                if (mat != null)
+                    mat.SetFloat("_UniversalIntensity", Mathf.Lerp(0.0f, volumetricIntensityMax, volumetricSlider.value));
             //volumetricSliderText.text = Mathf.Round(volumetricSlider.value * 100.0f).ToString();
             string text = Mathf.Round(volumetricSlider.value * 100.0f).ToString();
             SafeApplyText(volumetricSliderText, text);
@@ -1151,11 +1121,9 @@ namespace VRSL
 
         public void _SetProjectionIntensity()
         {
-            foreach(Material mat in projectionMaterials)
-            {
-                if (mat == null) continue;
-                mat.SetFloat("_UniversalIntensity", Mathf.Lerp(0.0f, projectionIntensityMax, projectionSlider.value));
-            }
+            foreach (Material mat in projectionMaterials)
+                if (mat != null)
+                    mat.SetFloat("_UniversalIntensity", Mathf.Lerp(0.0f, projectionIntensityMax, projectionSlider.value));
             //projectionSliderText.text = Mathf.Round(projectionSlider.value * 100.0f).ToString();
             string text = Mathf.Round(projectionSlider.value * 100.0f).ToString();
             SafeApplyText(projectionSliderText, text);
@@ -1167,10 +1135,8 @@ namespace VRSL
         public void _SetDiscoBallIntensity()
         {
             foreach (Material mat in discoBallMaterials)
-            {
-                if (mat == null) continue;
-                mat.SetFloat("_UniversalIntensity", Mathf.Lerp(0.0f, discoballIntensityMax, discoBallSlider.value));
-            }
+                if (mat != null)
+                    mat.SetFloat("_UniversalIntensity", Mathf.Lerp(0.0f, discoballIntensityMax, discoBallSlider.value));
             //discoBallSliderText.text = Mathf.Round(discoBallSlider.value * 100.0f).ToString();
             string text = Mathf.Round(discoBallSlider.value * 100.0f).ToString();
             SafeApplyText(discoBallSliderText, text);
@@ -1182,10 +1148,8 @@ namespace VRSL
         public void _SetLaserIntensity()
         {
             foreach (Material mat in laserMaterials)
-            {
-                if (mat == null) continue;
-                mat.SetFloat("_UniversalIntensity", Mathf.Lerp(0.0f, laserIntensityMax, laserSlider.value));
-            }
+                if (mat != null)
+                    mat.SetFloat("_UniversalIntensity", Mathf.Lerp(0.0f, laserIntensityMax, laserSlider.value));
             //laserSliderText.text = Mathf.Round(laserSlider.value * 100.0f).ToString();
             string text = Mathf.Round(laserSlider.value * 100.0f).ToString();
             SafeApplyText(laserSliderText, text);
@@ -1193,6 +1157,7 @@ namespace VRSL
             SafeApplyText(laserSliderTextPro, text);
 #endif
         }
+
         public void _SetBloomIntensity()
         {
             if (bloomAnimator != null)
@@ -1216,18 +1181,18 @@ namespace VRSL
             if (status)
             {
                 mat.EnableKeyword(keyword);
-            } 
+            }
             else 
             {
                 mat.DisableKeyword(keyword);
             }
         }
 
-        void SetVolumetricQuality()
+        private void SetVolumetricQuality()
         {
             foreach (Material target in volumetricMaterials)
             {
-                if(target == null){continue;}
+                if (target == null) continue;
                 if (volumetricQuality == VolumetricQualityModes.High)
                 {
                     target.SetOverrideTag("RenderType", "Transparent");
@@ -1239,39 +1204,19 @@ namespace VRSL
                     target.SetInt("_HQMode", 1);
                     target.SetInt("_RenderMode", 0);
                     if (target.HasProperty("_MAGIC_NOISE_ON_MED"))
-                    {
-                        SetKeyword(target, "_MAGIC_NOISE_ON_MED",
-                            (Mathf.FloorToInt(target.GetInt("_MAGIC_NOISE_ON_MED"))) == 1);
-                    }
-
+                        SetKeyword(target, "_MAGIC_NOISE_ON_MED", Mathf.FloorToInt(target.GetInt("_MAGIC_NOISE_ON_MED")) == 1 ? true : false);
                     if (target.HasProperty("_MAGIC_NOISE_ON_HIGH"))
-                    {
-                        SetKeyword(target, "_MAGIC_NOISE_ON_HIGH",
-                            (Mathf.FloorToInt(target.GetInt("_MAGIC_NOISE_ON_HIGH"))) == 1);
-                    }
-
+                        SetKeyword(target, "_MAGIC_NOISE_ON_HIGH", Mathf.FloorToInt(target.GetInt("_MAGIC_NOISE_ON_HIGH")) == 1 ? true : false);
                     if (target.HasProperty("_UseDepthLight"))
-                    {
-                        SetKeyword(target, "_USE_DEPTH_LIGHT",
-                            (Mathf.FloorToInt(target.GetInt("_UseDepthLight"))) == 1);
-                    }
-
+                        SetKeyword(target, "_USE_DEPTH_LIGHT", Mathf.FloorToInt(target.GetInt("_UseDepthLight")) == 1 ? true : false);
                     if (target.HasProperty("_PotatoMode"))
-                    {
-                        SetKeyword(target, "_POTATO_MODE_ON",
-                            (Mathf.FloorToInt(target.GetInt("_PotatoMode"))) == 1);
-                    }
-
+                        SetKeyword(target, "_POTATO_MODE_ON", Mathf.FloorToInt(target.GetInt("_PotatoMode")) == 1 ? true : false);
                     if (target.HasProperty("_HQMode"))
-                    {
-                        SetKeyword(target, "_HQ_MODE",
-                            (Mathf.FloorToInt(target.GetInt("_HQMode"))) == 1);
-                    }
-
+                        SetKeyword(target, "_HQ_MODE", Mathf.FloorToInt(target.GetInt("_HQMode")) == 1 ? true : false);
                     //SetKeyword(target, "_2D_NOISE_ON", (Mathf.FloorToInt(target.GetInt("_2D_NOISE_ON"))) == 1 ? true : false);
                     target.renderQueue = 3002;
                 }
-                else if(volumetricQuality == VolumetricQualityModes.Medium) 
+                else if (volumetricQuality == VolumetricQualityModes.Medium) 
                 {
                     target.SetOverrideTag("RenderType", "Transparent");
                     target.DisableKeyword("_ALPHATEST_ON");  
@@ -1282,33 +1227,15 @@ namespace VRSL
                     target.SetInt("_HQMode", 0);
                     target.SetInt("_RenderMode", 1);
                     if (target.HasProperty("_MAGIC_NOISE_ON_MED"))
-                    {
-                        SetKeyword(target, "_MAGIC_NOISE_ON_MED",
-                            (Mathf.FloorToInt(target.GetInt("_MAGIC_NOISE_ON_MED"))) == 1);
-                    }
-
+                        SetKeyword(target, "_MAGIC_NOISE_ON_MED", Mathf.FloorToInt(target.GetInt("_MAGIC_NOISE_ON_MED")) == 1 ? true : false);
                     if (target.HasProperty("_MAGIC_NOISE_ON_HIGH"))
-                    {
-                        SetKeyword(target, "_MAGIC_NOISE_ON_HIGH",
-                            (Mathf.FloorToInt(target.GetInt("_MAGIC_NOISE_ON_HIGH"))) == 1);
-                    }
-
+                        SetKeyword(target, "_MAGIC_NOISE_ON_HIGH", Mathf.FloorToInt(target.GetInt("_MAGIC_NOISE_ON_HIGH")) == 1 ? true : false);
                     if (target.HasProperty("_UseDepthLight"))
-                    {
-                        SetKeyword(target, "_USE_DEPTH_LIGHT",
-                            (Mathf.FloorToInt(target.GetInt("_UseDepthLight"))) == 1);
-                    }
-
+                        SetKeyword(target, "_USE_DEPTH_LIGHT", Mathf.FloorToInt(target.GetInt("_UseDepthLight")) == 1 ? true : false);
                     if (target.HasProperty("_PotatoMode"))
-                    {
-                        SetKeyword(target, "_POTATO_MODE_ON", (Mathf.FloorToInt(target.GetInt("_PotatoMode"))) == 1);
-                    }
-
+                        SetKeyword(target, "_POTATO_MODE_ON", Mathf.FloorToInt(target.GetInt("_PotatoMode")) == 1 ? true : false);
                     if (target.HasProperty("_HQMode"))
-                    {
-                        SetKeyword(target, "_HQ_MODE", (Mathf.FloorToInt(target.GetInt("_HQMode"))) == 1);
-                    }
-
+                        SetKeyword(target, "_HQ_MODE", Mathf.FloorToInt(target.GetInt("_HQMode")) == 1 ? true : false);
                     //SetKeyword(target, "_2D_NOISE_ON", (Mathf.FloorToInt(target.GetInt("_2D_NOISE_ON"))) == 1 ? true : false);
                     target.renderQueue = 3002;
                 }
@@ -1323,48 +1250,31 @@ namespace VRSL
                     target.SetInt("_HQMode", 0);
                     target.SetInt("_RenderMode", 2);
                     if (target.HasProperty("_MAGIC_NOISE_ON_MED"))
-                    {
-                        SetKeyword(target, "_MAGIC_NOISE_ON_MED",
-                            (Mathf.FloorToInt(target.GetInt("_MAGIC_NOISE_ON_MED"))) == 1);
-                    }
-
+                        SetKeyword(target, "_MAGIC_NOISE_ON_MED", Mathf.FloorToInt(target.GetInt("_MAGIC_NOISE_ON_MED")) == 1 ? true : false);
                     if (target.HasProperty("_MAGIC_NOISE_ON_HIGH"))
-                    {
-                        SetKeyword(target, "_MAGIC_NOISE_ON_HIGH",
-                            (Mathf.FloorToInt(target.GetInt("_MAGIC_NOISE_ON_HIGH"))) == 1);
-                    }
-
+                        SetKeyword(target, "_MAGIC_NOISE_ON_HIGH", Mathf.FloorToInt(target.GetInt("_MAGIC_NOISE_ON_HIGH")) == 1 ? true : false);
                     if (target.HasProperty("_UseDepthLight"))
-                    {
-                        SetKeyword(target, "_USE_DEPTH_LIGHT",
-                            (Mathf.FloorToInt(target.GetInt("_UseDepthLight"))) == 1);
-                    }
-
+                        SetKeyword(target, "_USE_DEPTH_LIGHT", Mathf.FloorToInt(target.GetInt("_UseDepthLight")) == 1 ? true : false);
                     if (target.HasProperty("_PotatoMode"))
-                    {
-                        SetKeyword(target, "_POTATO_MODE_ON", (Mathf.FloorToInt(target.GetInt("_PotatoMode"))) == 1);
-                    }
-
+                        SetKeyword(target, "_POTATO_MODE_ON", Mathf.FloorToInt(target.GetInt("_PotatoMode")) == 1 ? true : false);
                     if (target.HasProperty("_HQMode"))
-                    {
-                        SetKeyword(target, "_HQ_MODE", (Mathf.FloorToInt(target.GetInt("_HQMode"))) == 1);
-                    }
-
+                        SetKeyword(target, "_HQ_MODE", Mathf.FloorToInt(target.GetInt("_HQMode")) == 1 ? true : false);
                     //SetKeyword(target, "_2D_NOISE_ON", (Mathf.FloorToInt(target.GetInt("_2D_NOISE_ON"))) == 1 ? true : false);
                     target.renderQueue = 2452;
                 }
             }
         }
-        void SetBlinderProjectionQuality()
+
+        private void SetBlinderProjectionQuality()
         {
-            foreach(Material target in projectionMaterials)
+            foreach (Material target in projectionMaterials)
             {
                 if (target == null) continue;
                 if (!target.name.Contains("Blinder")) continue;
-                if (blinderProjectionQuality == DefaultQualityModes.High) 
+                if (blinderProjectionQuality == DefaultQualityModes.High)
                 {
                     target.SetOverrideTag("RenderType", "Transparent");
-                    target.DisableKeyword("_ALPHATEST_ON");  
+                    target.DisableKeyword("_ALPHATEST_ON");
                     //target.SetInt("_BlendSrc", 1);
                     target.SetInt("_BlendDst", 1);
                     target.SetInt("_ZWrite", 0);
@@ -1391,10 +1301,10 @@ namespace VRSL
             {
                 if (target == null) continue;
                 if (!target.name.Contains("Par")) continue;
-                if(parProjectionQuality == DefaultQualityModes.High) 
+                if (parProjectionQuality == DefaultQualityModes.High)
                 {
                     target.SetOverrideTag("RenderType", "Transparent");
-                    target.DisableKeyword("_ALPHATEST_ON");  
+                    target.DisableKeyword("_ALPHATEST_ON");
                     //target.SetInt("_BlendSrc", 1);
                     target.SetInt("_BlendDst", 1);
                     target.SetInt("_ZWrite", 0);
@@ -1415,16 +1325,17 @@ namespace VRSL
                 }
             }
         }
+
         private void SetOtherProjectionQuality()
         {
-            foreach(Material target in projectionMaterials)
+            foreach (Material target in projectionMaterials)
             {
                 if (target == null) continue;
-                if (target.name.Contains("Par") || target.name.Contains("Blinder")) continue;
-                if(otherProjectionQuality == DefaultQualityModes.High) 
+                if (target.name.Contains("Par") != false || target.name.Contains("Blinder") != false) continue;
+                if (otherProjectionQuality == DefaultQualityModes.High)
                 {
                     target.SetOverrideTag("RenderType", "Transparent");
-                    target.DisableKeyword("_ALPHATEST_ON");  
+                    target.DisableKeyword("_ALPHATEST_ON");
                     //target.SetInt("_BlendSrc", 1);
                     target.SetInt("_BlendDst", 1);
                     target.SetInt("_ZWrite", 0);
@@ -1448,7 +1359,7 @@ namespace VRSL
 
         private void SetDiscoballQuality()
         {
-            foreach(Material target in discoBallMaterials)
+            foreach (Material target in discoBallMaterials)
             {
                 if (target == null) continue;
                 if (discoballQuality == DefaultQualityModes.High) 
@@ -1475,17 +1386,16 @@ namespace VRSL
                 }
             }
         }
-        
         private void SetLensFlareQuality()
         {
-            foreach(Material target in fixtureMaterials)
+            foreach (Material target in fixtureMaterials)
             {
                 if (target == null) continue;
                 if (!target.name.Contains("Flare")) continue;
-                if (lensFlareQuality == DefaultQualityModes.High) 
+                if (lensFlareQuality == DefaultQualityModes.High)
                 {
                     target.SetOverrideTag("RenderType", "Transparent");
-                    target.DisableKeyword("_ALPHATEST_ON");  
+                    target.DisableKeyword("_ALPHATEST_ON");
                     //target.SetInt("_BlendSrc", 1);
                     target.SetInt("_BlendDst", 1);
                     target.SetInt("_ZWrite", 0);
@@ -1506,26 +1416,25 @@ namespace VRSL
                 }
             }
         }
-        
+
+        /// <summary>
+        /// Toggle strobe
+        /// </summary>
         private void SetStrobeQuality()
         {
-            // strobe on/off
             GlobalDisableStrobe = strobeQuality == DefaultQualityModes.Low;
         }
 
-
 #if !COMPILER_UDONSHARP && UNITY_EDITOR
-
         private static List<GameObject> GetAllObjectsOnlyInScene()
         {
             List<GameObject> objectsInScene = new List<GameObject>();
 
             foreach (GameObject go in Resources.FindObjectsOfTypeAll(typeof(GameObject)) as GameObject[])
-            {
-                if (!EditorUtility.IsPersistent(go.transform.root.gameObject) && !(go.hideFlags == HideFlags.NotEditable || go.hideFlags == HideFlags.HideAndDontSave))
+                if (!EditorUtility.IsPersistent(go.transform.root.gameObject) 
+                    && !(go.hideFlags == HideFlags.NotEditable 
+                    || go.hideFlags == HideFlags.HideAndDontSave))
                     objectsInScene.Add(go);
-            }
-
             return objectsInScene;
         }
 
@@ -1538,30 +1447,31 @@ namespace VRSL
             freshVolumetricMats.AddRange(volumetricMaterials);
             List<Material> freshProjectionMats = new List<Material>();
             freshProjectionMats.AddRange(projectionMaterials);
-            foreach(GameObject go in sceneObjects)
+            foreach (GameObject go in sceneObjects)
             {
                 MeshRenderer rend = go.GetComponent<MeshRenderer>();
                 if (rend == null) continue;
+                
                 if (go.name.Contains("Fixture") && (go.name.Contains("Lamp") || go.name.Contains("Mesh")))
                 {
-                    if (!freshFixtureMats.Contains(rend.sharedMaterial) && (rend.sharedMaterial.shader.FindPropertyIndex("_Band") != -1 || rend.sharedMaterial.shader.FindPropertyIndex("_DMXChannel") != -1))
-                    {
+                    if (!freshFixtureMats.Contains(rend.sharedMaterial) 
+                        && ((rend.sharedMaterial.shader.FindPropertyIndex("_Band") != -1) 
+                        || rend.sharedMaterial.shader.FindPropertyIndex("_DMXChannel") != -1))
                         freshFixtureMats.Add(rend.sharedMaterial);
-                    }
                 }
-                else if (go.name.Contains("Volumetric") && (rend.sharedMaterial.shader.FindPropertyIndex("_Band") != -1 || rend.sharedMaterial.shader.FindPropertyIndex("_DMXChannel") != -1))
+                else if (go.name.Contains("Volumetric") 
+                    && ((rend.sharedMaterial.shader.FindPropertyIndex("_Band") != -1) 
+                    || rend.sharedMaterial.shader.FindPropertyIndex("_DMXChannel") != -1))
                 {
                     if (!freshVolumetricMats.Contains(rend.sharedMaterial))
-                    {
                         freshVolumetricMats.Add(rend.sharedMaterial);
-                    }
                 }
-                else if (go.name.Contains("Projection") && (rend.sharedMaterial.shader.FindPropertyIndex("_Band") != -1 || rend.sharedMaterial.shader.FindPropertyIndex("_DMXChannel") != -1))
+                else if (go.name.Contains("Projection") 
+                    && ((rend.sharedMaterial.shader.FindPropertyIndex("_Band") != -1) 
+                    || rend.sharedMaterial.shader.FindPropertyIndex("_DMXChannel") != -1))
                 {
                     if (!freshProjectionMats.Contains(rend.sharedMaterial))
-                    {
                         freshProjectionMats.Add(rend.sharedMaterial);
-                    }
                 }
             }
 
@@ -1569,9 +1479,7 @@ namespace VRSL
             volumetricMaterials = freshVolumetricMats.ToArray();
             projectionMaterials = freshProjectionMats.ToArray();
             if (PrefabUtility.IsPartOfAnyPrefab(this))
-            {
                 PrefabUtility.RecordPrefabInstancePropertyModifications(this);
-            }
         }
 #endif
     }
@@ -1582,7 +1490,7 @@ namespace VRSL
     {
         public static Texture logo;
         //public static string ver = "VR Stage Lighting ver:" + " <b><color=#6a15ce> 2.1</color></b>";
-        private SerializedProperty audioLinkLasers, audiolinkLights, dmxLights, isUsingDMX,isUsingAudioLink, fixtureDefGUID, volumetricMeshQuality;
+        SerializedProperty audioLinkLasers, audiolinkLights, dmxLights, isUsingDMX,isUsingAudioLink, fixtureDefGUID, volumetricMeshQuality;
 
         private static string GetVersion()
         {
@@ -1608,30 +1516,31 @@ namespace VRSL
             fixtureDefGUID = serializedObject.FindProperty("fixtureDefGUID");
             volumetricMeshQuality = serializedObject.FindProperty("volumetricMeshQuality");
         }
-        
+
         public void _RemoveEmptyMaterials()
         {
             VRSL_LocalUIControlPanel controlPanel = (VRSL_LocalUIControlPanel)target;
             int count = 0;
             for (int i = 0; i < controlPanel.fixtureMaterials.Length; i++)
-            {
-                if (controlPanel.fixtureMaterials[i] != null) continue;
-                count++;
-            }
+                if (controlPanel.fixtureMaterials[i] == null) 
+                    count++;
             Material[] newArray = new Material[controlPanel.fixtureMaterials.Length - count];
             int otherCount = 0;
             for (int i = 0; i < controlPanel.fixtureMaterials.Length; i++)
             {
-                if (controlPanel.fixtureMaterials[i] == null) continue;
-                newArray[otherCount] = controlPanel.fixtureMaterials[i];
-                otherCount++;
+                if (controlPanel.fixtureMaterials[i] != null)
+                {
+                    newArray[otherCount] = controlPanel.fixtureMaterials[i];
+                    otherCount++;
+                }
             }
             controlPanel.fixtureMaterials = newArray;
+
         }
         public static void DrawLogo()
         {
-            ///GUILayout.BeginArea(new Rect(0,0, Screen.width, Screen.height));
-            // GUILayout.FlexibleSpace();
+            //GUILayout.BeginArea(new Rect(0,0, Screen.width, Screen.height));
+            //GUILayout.FlexibleSpace();
             //GUI.DrawTexture(pos,logo,ScaleMode.ScaleToFit);
             //EditorGUI.DrawPreviewTexture(new Rect(0,0,400,150), logo);
             Vector2 contentOffset = new Vector2(0f, -2f);
@@ -1644,9 +1553,10 @@ namespace VRSL
             //GUILayout.Label(logo,style, GUILayout.MaxWidth(500), GUILayout.MaxHeight(200));
             GUI.Box(rect, logo,style);
             //GUILayout.Label(logo);
-            // GUILayout.FlexibleSpace();
+            //GUILayout.FlexibleSpace();
             //GUILayout.EndArea();
         }
+
         private static Rect DrawShurikenCenteredTitle(string title, Vector2 contentOffset, int HeaderHeight)
         {
             var style = new GUIStyle("ShurikenModuleTitle");
@@ -1661,57 +1571,45 @@ namespace VRSL
             GUI.Box(rect, title, style);
             return rect;
         }
+
         public static void ShurikenHeaderCentered(string title)
         {
             DrawShurikenCenteredTitle(title, new Vector2(0f, -2f), 22);
         }
+
         private GUIContent Label(string label)
         {
             GUIContent content = new GUIContent();
             content.text = label;
             return content;
         }
+
         public override void OnInspectorGUI()
         {
+#if UDONSHARP
             if (UdonSharpGUI.DrawDefaultUdonSharpBehaviourHeader(target)) return;
-
+#endif
             EditorGUI.BeginChangeCheck();
             serializedObject.Update();
             DrawLogo();
             ShurikenHeaderCentered(GetVersion());
             EditorGUILayout.Space();
             VRSL_LocalUIControlPanel controlPanel = (VRSL_LocalUIControlPanel)target;
-            if (GUILayout.Button(new GUIContent("Force Update Target AudioLink Sample Texture",
-                    "Updates all AudioLink VRSL Fixtures to sample from the selected target texture when texture sampling is enabled on the fixture.")))
-            {
+            if (GUILayout.Button(new GUIContent("Force Update Target AudioLink Sample Texture", "Updates all AudioLink VRSL Fixtures to sample from the selected target texture when texture sampling is enabled on the fixture."))) 
                 controlPanel._ForceUpdateVideoSampleTexture();
-            }
-
             EditorGUILayout.Space();
-            if (GUILayout.Button(new GUIContent("Apply Quality Modes to All Materials",
-                    "Applies currently set quality modes to all materials.")))
-            {
+            if (GUILayout.Button(new GUIContent("Apply Quality Modes to All Materials", "Applies currently set quality modes to all materials."))) 
                 controlPanel._UpdateAllQualityModes();
-            }
-
             EditorGUILayout.Space();
-            if (GUILayout.Button(new GUIContent("Search For VRSL Materials",
-                    "Adds VRSL Compatible Materials in scene to materials lists")))
-            {
+            if (GUILayout.Button(new GUIContent("Search For VRSL Materials", "Adds VRSL Compatible Materials in scene to materials lists"))) 
                 controlPanel._GetNewMaterials();
-            }
-
             EditorGUILayout.Space();
-            if (GUILayout.Button(new GUIContent("Remove Empty Materials",
-                    "Removes all Empty Material slots from material lists.")))
-            {
+            if (GUILayout.Button(new GUIContent("Remove Empty Materials", "Removes all Empty Material slots from material lists."))) 
                 _RemoveEmptyMaterials();
-            }
-
             EditorGUILayout.Space();
             if (isUsingDMX.boolValue)
             {
-                // EditorGUILayout.PropertyField(dmxLights,true);
+                //EditorGUILayout.PropertyField(dmxLights,true);
                 for (int i = 0; i < dmxLights.arraySize; i++)
                 {
                     EditorGUILayout.PropertyField(dmxLights.GetArrayElementAtIndex(i));
@@ -1723,8 +1621,8 @@ namespace VRSL
                 {
                     EditorGUILayout.PropertyField(audiolinkLights.GetArrayElementAtIndex(i));
                     EditorGUILayout.PropertyField(audioLinkLasers.GetArrayElementAtIndex(i));
-                // EditorGUILayout.PropertyField(audiolinkLights, true);
-                // EditorGUILayout.PropertyField(audioLinkLasers,true);
+                    //EditorGUILayout.PropertyField(audiolinkLights, true);
+                    //EditorGUILayout.PropertyField(audioLinkLasers,true);
                 }
             }
             EditorGUILayout.LabelField("Fixture Definition GUID: " + fixtureDefGUID.stringValue);
